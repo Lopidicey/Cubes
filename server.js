@@ -34,10 +34,10 @@ app.get('/', (req, res) => {
 
 // Exemple : Récupérer des données depuis MySQL
 app.get('/api/cubes', (req, res) => {
-    const query = 'SELECT * FROM cubes'; // Remplacez "cubes" par le nom de votre table
+    const query = 'SELECT id, prenom AS firstName, nom AS lastName FROM utilisateurs'; // Utiliser la table "utilisateurs"
     db.query(query, (err, results) => {
         if (err) {
-            console.error(err);
+            console.error('Erreur lors de la récupération des données :', err);
             res.status(500).send('Erreur lors de la récupération des données.');
         } else {
             res.json(results);
