@@ -2,14 +2,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
-import { Engine, Render, World, Bodies, Mouse, MouseConstraint, Runner, Body } from "matter-js";
+import { Engine, Render, World, Bodies, Mouse, MouseConstraint, Runner, Body, Events } from "matter-js";
 import { Header } from "@/components/header";
 import { ParticlesBackground } from "@/components/particles-background";
 import axios from "axios";
 
 export default function Home() {
   const sceneRef = useRef<HTMLDivElement>(null);
-  const [users, setUsers] = useState<{ id: number; name: string }[]>([]);
+  const [users, setUsers] = useState<{ id: number; firstName: string; lastName: string }[]>([]);
 
   useEffect(() => {
     // Récupérer les utilisateurs depuis l'API
@@ -17,7 +17,8 @@ export default function Home() {
       .then((response) => {
         const fetchedUsers = response.data.map((user: any) => ({
           id: user.id,
-          name: user.name || `${user.firstName} ${user.lastName}`,
+          firstName: user.firstName || (user.name ? user.name.split(" ")[0] : ""),
+          lastName: user.lastName || (user.name ? user.name.split(" ")[1] : ""),
         }));
         setUsers(fetchedUsers);
       })
@@ -29,8 +30,14 @@ export default function Home() {
   useEffect(() => {
     if (users.length === 0) return;
 
+    const getInitials = (firstName: string, lastName: string) => {
+      const first = firstName?.[0]?.toUpperCase() || "";
+      const last = lastName?.[0]?.toUpperCase() || "";
+      return first + last;
+    };    
+
     const engine = Engine.create();
-    engine.world.gravity.y = 1; // Activer la gravité
+    engine.world.gravity.y = 0; // Activer la gravité
 
     const render = Render.create({
       element: sceneRef.current!,
@@ -67,7 +74,7 @@ export default function Home() {
     });
 
     // Définir la taille des cubes
-    const cubeSize = 100; // Modifier cette valeur pour ajuster la taille des cubes
+    const cubeSize = 75; // Modifier cette valeur pour ajuster la taille des cubes
 
     // Fonction pour générer une position aléatoire
     const getRandomPosition = () => ({
@@ -75,23 +82,55 @@ export default function Home() {
       y: Math.random() * window.innerHeight * 0.5, // Limiter à la moitié supérieure
     });
 
+    const createInitialsTexture = (initials: string) => {
+      const canvas = document.createElement("canvas");
+      const size = 128;
+      canvas.width = size;
+      canvas.height = size;
+    
+      const ctx = canvas.getContext("2d")!;
+      
+      // Fond
+      ctx.fillStyle = "#007bff";
+      ctx.fillRect(0, 0, size, size);
+    
+      // Texte
+      ctx.font = "bold 48px sans-serif";
+      ctx.fillStyle = "#ffffff";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(initials, size / 2, size / 2);
+    
+      return canvas.toDataURL();
+    };
+    
+
     // Fonction pour ajouter un cube avec un délai aléatoire
-    const addCubeWithDelay = (user: { id: number; name: string }, index: number) => {
-      const delay = Math.random() * 2000; // Délai aléatoire entre 0 et 2 secondes
+    const addCubeWithDelay = (user: { id: number; firstName: string; lastName: string }, index: number) => {
+      const delay = Math.random() * 2000;
       setTimeout(() => {
         const position = getRandomPosition();
+    
+        const initials = getInitials(user.firstName, user.lastName);
+        const texture = createInitialsTexture(initials);
+    
         const cube = Bodies.rectangle(position.x, position.y, cubeSize, cubeSize, {
           restitution: 0.8,
-          friction: 0.5,
-          render: { fillStyle: "#007bff" },
+          friction: -0.25,
+          render: {
+            sprite: {
+              texture: texture,
+              xScale: cubeSize / 128,
+              yScale: cubeSize / 128,
+            },
+          },
         });
-
-        // Ajouter une petite impulsion aléatoire
+    
         Body.setVelocity(cube, {
           x: Math.random() * 2 - 1,
           y: Math.random() * 2 - 1,
         });
-
+    
         World.add(engine.world, cube);
       }, delay);
     };
