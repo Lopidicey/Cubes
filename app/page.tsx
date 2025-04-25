@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useLayoutEffect } from "react";
 import { motion } from "framer-motion";
 import { Engine, Render, World, Bodies, Mouse, MouseConstraint, Runner, Body, Events } from "matter-js";
 import { Header } from "@/components/header";
@@ -9,16 +10,17 @@ import axios from "axios";
 
 export default function Home() {
   const sceneRef = useRef<HTMLDivElement>(null);
-  const [users, setUsers] = useState<{ id: number; firstName: string; lastName: string }[]>([]);
+  const [users, setUsers] = useState<{ id: number; firstName: string; lastName: string; value: number }[]>([]);
 
   useEffect(() => {
     // Récupérer les utilisateurs depuis l'API
-    axios.get("http://localhost:5000/api/cubes")
+    axios.get("http://localhost:5000/api/cubes/with-stats")
       .then((response) => {
         const fetchedUsers = response.data.map((user: any) => ({
           id: user.id,
-          firstName: user.firstName || (user.name ? user.name.split(" ")[0] : ""),
-          lastName: user.lastName || (user.name ? user.name.split(" ")[1] : ""),
+          firstName: user.firstName,
+          lastName: user.lastName,
+          value: user.publicRepos, // ou `user.gameCount` si Steam par exemple
         }));
         setUsers(fetchedUsers);
       })
@@ -27,8 +29,10 @@ export default function Home() {
       });
   }, []);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+
     if (users.length === 0) return;
+    if (!sceneRef.current) return;
 
     const getInitials = (firstName: string, lastName: string) => {
       const first = firstName?.[0]?.toUpperCase() || "";
@@ -39,8 +43,10 @@ export default function Home() {
     const engine = Engine.create();
     engine.world.gravity.y = 0; // Activer la gravité
 
+    if (!sceneRef.current) return;
+
     const render = Render.create({
-      element: sceneRef.current!,
+      element: sceneRef.current,
       engine: engine,
       options: {
         width: window.innerWidth,
@@ -74,7 +80,8 @@ export default function Home() {
     });
 
     // Définir la taille des cubes
-    const cubeSize = 75; // Modifier cette valeur pour ajuster la taille des cubes
+    const baseSize = 75; // Taille de base des cubes
+    const multiplier = 5; // Facteur multiplicateur pour ajuster la taille
 
     // Fonction pour générer une position aléatoire
     const getRandomPosition = () => ({
@@ -106,13 +113,18 @@ export default function Home() {
     
 
     // Fonction pour ajouter un cube avec un délai aléatoire
-    const addCubeWithDelay = (user: { id: number; firstName: string; lastName: string }, index: number) => {
+    const addCubeWithDelay = (user: {
+      value: number; id: number; firstName: string; lastName: string 
+}, index: number) => {
       const delay = Math.random() * 2000;
       setTimeout(() => {
         const position = getRandomPosition();
     
         const initials = getInitials(user.firstName, user.lastName);
         const texture = createInitialsTexture(initials);
+        const value = typeof user.value === "number" && !isNaN(user.value) ? user.value : 0;
+        console.log("Valeur de l'utilisateur :", value);
+        const cubeSize = baseSize + value * multiplier; // Modifier cette valeur pour ajuster la taille des cubes
     
         const cube = Bodies.rectangle(position.x, position.y, cubeSize, cubeSize, {
           restitution: 0.8,
@@ -164,7 +176,12 @@ export default function Home() {
       Runner.stop(runner);
       World.clear(engine.world, false);
       Engine.clear(engine);
-      render.canvas.remove();
+    
+      if (render.canvas && render.canvas.parentNode) {
+        render.canvas.parentNode.removeChild(render.canvas);
+      }
+    
+      render.textures = {};
     };
   }, [users]);
 
