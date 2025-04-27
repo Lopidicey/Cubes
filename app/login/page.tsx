@@ -35,6 +35,8 @@ export default function LoginPage() {
   
       // Stocker les informations utilisateur dans le localStorage
       localStorage.setItem("user", JSON.stringify({ email: data.user.email }));
+      localStorage.setItem("isLoggedIn", "true");
+      localStorage.setItem("userEmail", data.user.email); 
   
       // Rediriger vers la page de profil
       router.push("/profile");

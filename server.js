@@ -49,57 +49,48 @@ app.get('/api/cubes', (req, res) => {
 });
 
 // Route pour connecter un utilisateur
-app.post('/api/login', async (req, res) => {
+app.post('/api/login', (req, res) => {
+    console.log("Requête reçue sur /api/login :", req.body);
     const { email, password } = req.body;
-
+  
     if (!email || !password) {
-        return res.status(400).json({ message: "Tous les champs sont requis." });
+      return res.status(400).json({ message: "Tous les champs sont requis." });
     }
-
-    // Recherche de l'utilisateur dans la base de données
+  
     const query = 'SELECT id, prenom AS firstName, nom AS lastName, email, mdp FROM utilisateurs WHERE email = ?';
+    
     db.query(query, [email], async (err, results) => {
-        if (err) {
-            console.error('Erreur lors de la vérification de l\'utilisateur :', err);
-            return res.status(500).json({ message: "Erreur serveur." });
-        }
-
-        if (results.length === 0) {
-            return res.status(401).json({ message: "Email ou mot de passe incorrect." });
-        }
-
-        const user = results[0];
-
-        // Si les mots de passe ne correspondent pas, vérifier si l'utilisateur a déjà un mot de passe haché
-        const passwordIsCorrect = password === user.mdp;  // Comparaison du mot de passe en clair
-
-        if (passwordIsCorrect) {
-            // Hachage du mot de passe pour les utilisateurs existants
-            const hashedPassword = await bcrypt.hash(password, 10);
-
-            // Mise à jour du mot de passe dans la base de données (remplacer le mot de passe en clair)
-            const updateQuery = 'UPDATE utilisateurs SET mdp = ? WHERE email = ?';
-            db.query(updateQuery, [hashedPassword, email], (err, results) => {
-                if (err) {
-                    console.error('Erreur lors de la mise à jour du mot de passe :', err);
-                    return res.status(500).json({ message: "Erreur serveur." });
-                }
-                // Répondre après mise à jour
-                res.status(200).json({
-                    message: "Connexion réussie et mot de passe mis à jour.",
-                    user: {
-                        id: user.id,
-                        firstName: user.firstName,
-                        lastName: user.lastName,
-                        email: user.email,
-                    },
-                });
-            });
-        } else {
-            return res.status(401).json({ message: "Email ou mot de passe incorrect." });
-        }
+      if (err) {
+        console.error('Erreur lors de la vérification de l\'utilisateur :', err);
+        return res.status(500).json({ message: "Erreur serveur." });
+      }
+  
+      if (results.length === 0) {
+        return res.status(401).json({ message: "Email ou mot de passe incorrect." });
+      }
+  
+      const user = results[0];
+  
+      // 💡 Comparer le mot de passe fourni avec le hash
+      const bcrypt = require('bcryptjs');
+      const passwordMatch = await bcrypt.compare(password, user.mdp);
+  
+      if (!passwordMatch) {
+        return res.status(401).json({ message: "Email ou mot de passe incorrect." });
+      }
+  
+      res.status(200).json({
+        message: "Connexion réussie.",
+        user: {
+          id: user.id,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          email: user.email,
+        },
+      });
     });
-});
+  });
+  
 
 // Route pour enregistrer un utilisateur
 app.post('/api/register', (req, res) => {

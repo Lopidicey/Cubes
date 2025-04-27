@@ -1,13 +1,27 @@
 "use client";
 
-import Link from "next/link"
-import { Cuboid as Cube } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { usePathname } from "next/navigation"
+import Link from "next/link";
+import { Cuboid as Cube } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 
 export function Header() {
-  const pathname = usePathname()
-  const isLoggedIn = typeof window !== "undefined" && localStorage.getItem("user"); // Vérifie si l'utilisateur est connecté
+  const pathname = usePathname();
+  const [mounted, setMounted] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+    const isLogged = localStorage.getItem("isLoggedIn");
+    if (isLogged === "true") {
+      setIsLoggedIn(true);
+    }
+  }, []);
+
+  if (!mounted) {
+    return null;
+  }
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-sm border-b border-border">
@@ -28,8 +42,9 @@ export function Header() {
               <Button
                 variant="ghost"
                 onClick={() => {
-                  localStorage.removeItem("user"); // Déconnexion
-                  window.location.href = "/"; // Redirect to homepage
+                  localStorage.removeItem("isLoggedIn");
+                  localStorage.removeItem("userEmail");
+                  window.location.href = "/"; // Ou router.push("/") si tu veux faire Next.js propre
                 }}
               >
                 Déconnexion
@@ -43,5 +58,5 @@ export function Header() {
         </nav>
       </div>
     </header>
-  )
+  );
 }
