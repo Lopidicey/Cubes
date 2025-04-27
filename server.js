@@ -5,13 +5,61 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const axios = require('axios');
 const bcrypt = require('bcryptjs');
+const multer = require('multer');
+const path = require('path');
 
 const app = express();
 const PORT = 5000;
 
 // Middleware
-app.use(cors());
+app.use(cors({
+    origin: "http://localhost:3000", // Remplace par l'URL de ton frontend si nécessaire
+    methods: ["GET", "POST", "PATCH", "DELETE"],
+    allowedHeaders: ["Content-Type", "Authorization", "x-user-email"],
+  }));
 app.use(bodyParser.json());
+
+// Définir le dossier où les images seront stockées
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        // Définir le dossier où stocker les fichiers
+        cb(null, 'Pfps');
+    },
+    filename: (req, file, cb) => {
+        // Modifier le nom du fichier pour éviter les conflits (ex: ajouter un timestamp)
+        cb(null, Date.now() + path.extname(file.originalname));
+    }
+});
+
+// Vérification du type de fichier (jpeg, jpg, png, gif)
+const fileFilter = (req, file, cb) => {
+    const filetypes = /jpeg|jpg|png|gif/;
+    const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
+    const mimetype = filetypes.test(file.mimetype);
+
+    if (extname && mimetype) {
+        return cb(null, true);
+    } else {
+        cb(new Error("Erreur: Vous devez télécharger une image valide (JPG, PNG, GIF)"));
+    }
+};
+
+// Initialiser multer avec des options
+const upload = multer({
+    storage: storage,
+    fileFilter: fileFilter,
+    limits: { fileSize: 5 * 1024 * 1024 } // Limite de taille à 5MB
+}).single('image'); // Attente d'un seul fichier avec le champ 'image'
+  
+
+app.use((err, req, res, next) => {
+    if (err instanceof multer.MulterError) {
+        return res.status(400).json({ error: `Erreur lors de l'upload: ${err.message}` });
+    } else if (err) {
+        return res.status(400).json({ error: err.message });
+    }
+    next();
+});
 
 // Connexion à la base de données MySQL
 const db = mysql.createConnection({
@@ -30,23 +78,65 @@ db.connect((err) => {
     console.log('Connecté à la base de données MySQL.');
 });
 
-// Route de test
-app.get('/', (req, res) => {
-    res.send('Serveur Node.js opérationnel !');
-});
+// Servir les fichiers statiques
+app.use('/Pfps', express.static(path.join(__dirname, 'Pfps'), {
+    setHeaders: (res, path) => {
+        res.setHeader('Access-Control-Allow-Origin', '*');
+    }
+}));
 
-// Exemple : Récupérer des données depuis MySQL
-app.get('/api/cubes', (req, res) => {
-    const query = 'SELECT id, prenom AS firstName, nom AS lastName FROM utilisateurs'; // Utiliser la table "utilisateurs"
-    db.query(query, (err, results) => {
+// Route POST pour gérer l'upload de l'image
+
+app.post("/api/upload-profile-image", (req, res) => {
+    upload(req, res, (err) => {
+      if (err) {
+        console.log('Erreur dans multer:', err);
+        return res.status(400).json({ message: "Erreur lors de l'upload de l'image", error: err.message });
+      }
+  
+      if (!req.file) {
+        console.log('Aucun fichier téléchargé');
+        return res.status(400).json({ message: "Aucun fichier téléchargé" });
+      }
+  
+      const email = req.headers['x-user-email'];
+      const imagePath = `http://localhost:5000/Pfps/${req.file.filename}`;
+      console.log('Image téléchargée:', imagePath);
+  
+      const connection = mysql.createConnection({
+        host: "localhost",
+        user: "root",
+        password: "",
+        database: "cubes-db",
+      });
+  
+      connection.connect((err) => {
         if (err) {
-            console.error('Erreur lors de la récupération des données :', err);
-            res.status(500).send('Erreur lors de la récupération des données.');
-        } else {
-            res.json(results);
+          console.log('Erreur de connexion à la base de données:', err);
+          return res.status(500).json({ message: "Erreur de connexion à la base de données" });
         }
+  
+        const query = "UPDATE utilisateurs SET profileImage = ? WHERE email = ?";
+
+        console.log('Chemin de l\'image à enregistrer dans la BDD :', imagePath);
+        console.log('Email de l\'utilisateur :', email);
+
+        connection.query(query, [imagePath, email], (err, result) => {
+          connection.end();
+  
+          if (err) {
+            console.log('Erreur lors de la mise à jour de l\'image dans la base de données:', err);
+            return res.status(500).json({ message: "Erreur lors de la mise à jour de l'image", error: err.message });
+          }
+  
+          console.log('Image mise à jour dans la base de données');
+          res.status(200).json({ message: "Image téléchargée avec succès", imagePath });
+        });
+      });
     });
-});
+  });
+  
+
 
 // Route pour connecter un utilisateur
 app.post('/api/login', (req, res) => {
@@ -71,7 +161,7 @@ app.post('/api/login', (req, res) => {
   
       const user = results[0];
   
-      // 💡 Comparer le mot de passe fourni avec le hash
+      // Comparer le mot de passe fourni avec le hash
       const bcrypt = require('bcryptjs');
       const passwordMatch = await bcrypt.compare(password, user.mdp);
   
@@ -140,8 +230,8 @@ app.get('/api/user', (req, res) => {
         return res.status(400).json({ message: "Email utilisateur manquant." });
     }
 
-    const query = 'SELECT id, prenom AS firstName, nom AS lastName, email, github_username FROM utilisateurs WHERE email = ?';
-    db.query(query, [email], (err, results) => {
+    const query = 'SELECT id, prenom AS firstName, nom AS lastName, email, github_username, profileImage FROM utilisateurs WHERE email = ?';
+    db.query(query, [email], async (err, results) => {
         if (err) {
             console.error('Erreur lors de la récupération des informations utilisateur :', err);
             return res.status(500).json({ message: "Erreur serveur." });
@@ -151,7 +241,27 @@ app.get('/api/user', (req, res) => {
             return res.status(404).json({ message: "Utilisateur non trouvé." });
         }
 
-        res.status(200).json(results[0]);
+        const user = results[0];
+
+        // Récupérer les dépôts publics GitHub si le pseudo GitHub est défini
+        if (user.github_username) {
+            try {
+                const githubRes = await axios.get(`https://api.github.com/users/${user.github_username}`, {
+                    headers: {
+                        Authorization: `Bearer ${process.env.GITHUB_TOKEN}`, // Token GitHub
+                        'User-Agent': 'CubesApp',
+                    },
+                });
+                user.publicRepos = githubRes.data.public_repos;
+            } catch (err) {
+                console.error("Erreur lors de la récupération des dépôts publics GitHub :", err.message);
+                user.publicRepos = 0; // Valeur par défaut en cas d'erreur
+            }
+        } else {
+            user.publicRepos = 0; // Valeur par défaut si aucun pseudo GitHub n'est défini
+        }
+
+        res.status(200).json(user);
     });
 });
 
@@ -175,7 +285,7 @@ app.patch('/api/user', (req, res) => {
   });
 
   app.get('/api/cubes/with-stats', async (req, res) => {
-    const query = 'SELECT id, prenom AS firstName, nom AS lastName, github_username FROM utilisateurs';
+    const query = 'SELECT id, prenom AS firstName, nom AS lastName, github_username,profileImage FROM utilisateurs';
     db.query(query, async (err, results) => {
         if (err) return res.status(500).send("Erreur MySQL");
 
@@ -197,6 +307,11 @@ app.patch('/api/user', (req, res) => {
                 return { ...user, publicRepos: 0 }; // fallback si erreur GitHub
             }
         }));
+
+        const user = results[0];
+         if (user.profileImage) {
+             user.profileImage = `http://localhost:5000${user.profileImage}`;
+         }
 
         res.json(usersWithStats);
     });

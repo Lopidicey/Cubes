@@ -6,10 +6,11 @@ import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
 
 export default function ProfilePage() {
-  const [user, setUser] = useState<{ firstName: string; lastName: string; email: string; github_username?: string } | null>(null);
+  const [user, setUser] = useState<{ firstName: string; lastName: string; email: string; github_username?: string; profileImage?: string; publicRepos?: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isMounted, setIsMounted] = useState(false);
   const [githubUsername, setGithubUsername] = useState<string>("");
+  const [image, setImage] = useState<File | null>(null);
 
   useEffect(() => {
     setIsMounted(true);
@@ -41,6 +42,7 @@ export default function ProfilePage() {
 
           if (response.ok) {
             const data = await response.json();
+            console.log("Données utilisateur récupérées :", data); // Vérifiez que profileImage est présent
             setUser(data);
             setGithubUsername(data.github_username || ""); // Charger le pseudo GitHub
           } else {
@@ -110,6 +112,51 @@ export default function ProfilePage() {
     }
 };
 
+const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const file = e.target.files?.[0];
+  if (file && file.type.match('image.*')) {
+    setImage(file);
+  } else {
+    alert("Veuillez télécharger un fichier image (PNG, JPG, GIF).");
+  }
+};
+
+const handleUpload = async () => {
+  if (image) {
+    const formData = new FormData();
+    formData.append("image", image);
+
+    try {
+      const response = await fetch("http://localhost:5000/api/upload-profile-image", {
+        method: "POST",
+        headers: {
+          "x-user-email": user?.email || "", // Assurez-vous que l'email de l'utilisateur est présent
+        },
+        body: formData,
+      });
+
+      const data = await response.json();
+      if (response.ok && data.message === "Image téléchargée avec succès") {
+        // Affichage d'une alerte pour confirmer l'upload réussi
+        alert("Image de profil mise à jour !");
+
+        // Mise à jour de l'image de profil dans l'état utilisateur
+        setUser((prevUser) => ({
+          ...prevUser!,
+          profileImage: data.imagePath, // Mise à jour du chemin de l'image
+        }));
+
+      } else {
+        alert("Erreur lors de l'upload de l'image.");
+      }
+    } catch (err) {
+      console.error("Erreur lors de l'upload :", err);
+      alert("Erreur lors de l'upload.");
+    }
+  }
+};
+
+
   if (!isMounted) {
     return null; // Empêche le rendu côté serveur
   }
@@ -158,6 +205,7 @@ export default function ProfilePage() {
           <p><strong>Prénom :</strong> {user.firstName}</p>
           <p><strong>Nom :</strong> {user.lastName}</p>
           <p><strong>Email :</strong> {user.email}</p>
+          <p><strong>Votre taille :</strong> {user.publicRepos !== undefined ? user.publicRepos : "Chargement..."}</p>
 
           {/* Champ pour le pseudo GitHub */}
           <div className="mt-4">
@@ -182,10 +230,33 @@ export default function ProfilePage() {
 
           {/* Affichage du pseudo GitHub s'il existe */}
           {githubUsername && (
-            <p className="mt-4 text-sm text-gray-600">
+            <p className="mt-4 mb-4 text-sm text-gray-600">
               <strong>Pseudo GitHub :</strong> {githubUsername}
             </p>
           )}
+
+          {/* Champ pour uploader une image de profil */}
+          <div>
+            <label htmlFor="file-upload" className="cursor-pointer underline">Téléchargez votre image de profil</label>
+            <input 
+              id="file-upload"
+              type="file"
+              accept="image/png, image/jpeg, image/gif"
+              onChange={handleFileChange}
+              className="hidden"
+            />
+            {user.profileImage && (
+              <img
+                src={user.profileImage} // Utilisez user.profileImage pour afficher l'image actuelle
+                alt="Image de profil"
+                className="mt-4 w-32 h-32 rounded-full object-cover"
+              />
+            )}
+            {image && <p className="mt-4 text-sm text-gray-600">{image.name}</p>}
+            <button onClick={handleUpload} 
+            className="mt-2 px-4 py-2 bg-black-500 text-white rounded border border-white hover:bg-gray-600">
+              Mettre à jour l'image</button>
+          </div>
 
           {/* Bouton pour supprimer le compte */}
           <div className="mt-6">

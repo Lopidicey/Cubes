@@ -10,17 +10,19 @@ import axios from "axios";
 
 export default function Home() {
   const sceneRef = useRef<HTMLDivElement>(null);
-  const [users, setUsers] = useState<{ id: number; firstName: string; lastName: string; value: number }[]>([]);
+  const [users, setUsers] = useState<{ id: number; firstName: string; lastName: string; value: number; profileImage?: string | null }[]>([]);
 
   useEffect(() => {
     // Récupérer les utilisateurs depuis l'API
     axios.get("http://localhost:5000/api/cubes/with-stats")
       .then((response) => {
+        console.log("Données récupérées de l'API :", response.data);  // Ajoute ce log pour examiner la structure des données
         const fetchedUsers = response.data.map((user: any) => ({
           id: user.id,
           firstName: user.firstName,
           lastName: user.lastName,
           value: user.publicRepos, // ou `user.gameCount` si Steam par exemple
+          profileImage: user.profileImage || null, // Assurez-vous que l'image de profil est dans le bon format
         }));
         setUsers(fetchedUsers);
       })
@@ -113,39 +115,122 @@ export default function Home() {
     
 
     // Fonction pour ajouter un cube avec un délai aléatoire
-    const addCubeWithDelay = (user: {
-      value: number; id: number; firstName: string; lastName: string 
-}, index: number) => {
-      const delay = Math.random() * 2000;
+    const addCubeWithDelay = (user: { value: number; id: number; firstName: string; lastName: string; profileImage?: string | null }, index: number) => {
+      const delay = Math.random() * 2000; // Un délai aléatoire pour chaque utilisateur
       setTimeout(() => {
         const position = getRandomPosition();
-    
         const initials = getInitials(user.firstName, user.lastName);
-        const texture = createInitialsTexture(initials);
         const value = typeof user.value === "number" && !isNaN(user.value) ? user.value : 0;
-        console.log("Valeur de l'utilisateur :", value);
-        const cubeSize = baseSize + value * multiplier; // Modifier cette valeur pour ajuster la taille des cubes
+        const cubeSize = baseSize + value * multiplier;
     
-        const cube = Bodies.rectangle(position.x, position.y, cubeSize, cubeSize, {
-          restitution: 0.8,
-          friction: -0.25,
-          render: {
-            sprite: {
-              texture: texture,
-              xScale: cubeSize / 128,
-              yScale: cubeSize / 128,
+        // Fonction pour créer une texture basée sur les initiales
+        const createInitialsTexture = (initials: string) => {
+          const canvas = document.createElement("canvas");
+          const size = 128; // Taille du canevas pour le fond
+          canvas.width = size;
+          canvas.height = size;
+    
+          const ctx = canvas.getContext("2d")!;
+          
+          // Fond
+          ctx.fillStyle = "#007bff"; // Bleu de fond
+          ctx.fillRect(0, 0, size, size);
+    
+          // Texte (Initiales)
+          ctx.font = "bold 48px sans-serif";
+          ctx.fillStyle = "#ffffff"; // Couleur du texte (blanc)
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText(initials, size / 2, size / 2);
+    
+          return canvas.toDataURL();
+        };
+    
+        // Fonction pour appliquer la texture à un cube
+        const applyTextureToCube = (imageSrc: string, position: { x: number; y: number }, cubeSize: number) => {
+          console.log("tentative de chargement de l'image :", imageSrc);  // Ajout du log
+        
+          const img = new Image();
+          img.crossOrigin = "anonymous";
+          img.src = imageSrc;
+        
+          img.onload = () => {
+            console.log("Image chargée avec succès :", imageSrc);  // Ajout du log
+        
+            const texture = img.src;
+        
+            // Calculer le facteur d'échelle en fonction de la taille du cube
+            const textureScale = cubeSize / Math.max(img.width, img.height);
+        
+            // Création du cube avec texture
+            const cube = Bodies.rectangle(position.x, position.y, cubeSize, cubeSize, {
+              restitution: 0.8,
+              friction: -0.25,
+              render: { 
+                sprite: {
+                  texture: texture,
+                  xScale: textureScale, // Ajuste l'échelle horizontale
+                  yScale: textureScale, // Ajuste l'échelle verticale
+                },
+              },
+            });
+        
+            Body.setVelocity(cube, { x: Math.random() * 2 - 1, y: Math.random() * 2 - 1 });
+            World.add(engine.world, cube);
+          };
+        
+          img.onerror = () => {
+            // Si l'image échoue à charger, on applique une texture basée sur les initiales
+            console.log("Pas d'image de profil pour :", user.firstName, user.lastName);
+            const fallbackTexture = createInitialsTexture(initials);
+            const cube = Bodies.rectangle(position.x, position.y, cubeSize, cubeSize, {
+              restitution: 0.8,
+              friction: -0.25,
+              render: {
+                sprite: {
+                  texture: fallbackTexture,
+                  xScale: 1,
+                  yScale: 1,
+                },
+              },
+            });
+        
+            Body.setVelocity(cube, { x: Math.random() * 2 - 1, y: Math.random() * 2 - 1 });
+            World.add(engine.world, cube);
+          };
+        };
+        
+    
+        // Déterminer l'image ou utiliser les initiales
+        if (user.profileImage) {
+          const imageSrc = user.profileImage;
+          console.log("Image de profil pour l'utilisateur", user.firstName, user.lastName, ": ", user.profileImage);
+          applyTextureToCube(imageSrc, position, cubeSize);
+        } else {
+          console.log("Aucune image de profil, utilisation des initiales pour l'utilisateur :", user.firstName, user.lastName);
+          const fallbackTexture = createInitialsTexture(initials);
+          // Créer le cube avec la texture des initiales
+          const cube = Bodies.rectangle(position.x, position.y, cubeSize, cubeSize, {
+            restitution: 0.8,
+            friction: -0.25,
+            render: {
+              sprite: {
+                texture: fallbackTexture,
+                xScale: cubeSize / 128,
+                yScale: cubeSize / 128,
+              },
             },
-          },
-        });
+          });
     
-        Body.setVelocity(cube, {
-          x: Math.random() * 2 - 1,
-          y: Math.random() * 2 - 1,
-        });
-    
-        World.add(engine.world, cube);
+          Body.setVelocity(cube, { x: Math.random() * 2 - 1, y: Math.random() * 2 - 1 });
+          World.add(engine.world, cube);
+        }
       }, delay);
     };
+    
+    
+    
+    
 
     // Ajouter les cubes avec des délais aléatoires
     users.forEach((user, index) => addCubeWithDelay(user, index));
